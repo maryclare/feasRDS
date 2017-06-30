@@ -18,6 +18,8 @@ Before beginning, we clear the memory, set a random seed to ensure that the resu
 <<eval=TRUE, cache=FALSE, message=FALSE, warning=FALSE>>=
 rm(list = ls())
 set.seed(1)
+library(devtools)
+install_github("maryclare/feasRDS")
 library(feasRDS)
 @
 
