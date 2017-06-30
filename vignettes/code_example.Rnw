@@ -1,0 +1,509 @@
+\documentclass{article}
+
+\usepackage{amsmath}
+\usepackage[margin=1in]{geometry}
+
+\begin{document}
+
+\section{Introduction}
+
+This material is a supplement to the paper, ``Studying Lesbian, Gay and Bisexual Older Adults: Is Respondent Driven Sampling Feasible?"
+We provide an illustration of the methods developed in the paper for assessing RDS feasibility given aggregated, egocentric sample data on a hard to reach population.
+We emphasize that this material does not replicate results presented in the paper; we cannot make the raw data available and code that replicated the results would be prohibitively slow to run due to the number of networks and RDS samples simulated to generate the results in the paper.
+Rather, this material walks through each step of the methods presented in the paper for a single simulated RDS sample drawn from a single simulated population network for a synthetic data set, constructed to be similar to the raw data used in the paper.
+This material will allow those interested in applying the methods presented in the paper to assessing RDS feasibility for different populations to see how the methods are implemented in a way that allows them to use and extend them.
+
+\section{Clearing and Preparing the Workspace}
+Before beginning, we clear the memory, set a random seed to ensure that the results do not change every time the code is run, and load the \texttt{feasRDS} library, which contains the synthetic data and functions needed to illustrate the methods used in the paper. Because loading the \texttt{feasRDS} package causes \texttt{R} to produce a lot of output with information about the packages that the \texttt{feasRDS} package depends on, we have suppressed that output here for space.
+<<eval=TRUE, cache=FALSE, message=FALSE, warning=FALSE>>=
+rm(list = ls())
+set.seed(1)
+library(feasRDS)
+@
+
+\section{Introduction to Sample Data}
+
+We start with synthetic aggregated egocentric sample data for a single MSA, contained in a data frame called \texttt{synth.data}.
+% We obtained this data by taking a sample from a randomly chosen synthetic network simulated for MSA 1 with the same sample subpopulation proportions as the real sample data by gender, sexual identity and age group.
+
+<<echo=TRUE, cache=FALSE>>=
+data(synth.data)
+@
+
+The variable \texttt{id} gives an unique identifier for each of the \Sexpr{nrow(synth.data)} synthetic sampled egos.
+
+The variables \texttt{gender4}, \texttt{bisexual} and \texttt{ageimp.ind} give each ego's gender, sexual identity and an indicator for age greater than or equal to 65 years.
+The variable \texttt{depressed} gives an indicator of depression for each ego.
+
+<<echo=TRUE, cache=FALSE>>=
+synth.data[1:3, c("gender4", "bisexual", "ageimp.ind", "depressed")]
+@
+
+The variables \texttt{les50.imp.round}, \texttt{gay50.imp.round} and \texttt{bi50.imp.round} give degree counts for each ego by alter gender and sexual identity.
+<<echo=TRUE, cache=FALSE>>=
+synth.data[1:3, c("les50.imp.round", "gay50.imp.round", "bi50.imp.round")]
+@
+
+Lastly, the variables \texttt{contact} and \texttt{spread} give synthetic sampled ego's willingness to participate and willingness to refer others.
+<<echo=TRUE, cache=FALSE>>=
+synth.data[1:3, c("contact", "spread")]
+@
+
+
+\section{Transforming Sample Data}
+
+Before constructing sample degree distributions and mixing totals from the aggregated egocentric sample data, we set the degree distribution upper bound, \texttt{K}, to 45.
+<<echo=TRUE, cache=FALSE>>=
+K <- 45
+@
+
+We have created a function called \texttt{get.data} that takes a data frame like \texttt{synth.data} and a value for the degree distribution cutoff, \texttt{K}. The function returns various quantities derived from the aggregated egocentric sample data used in the estimation of population degree distributions and mixing totals, simulation of networks and simulation of RDS.
+
+<<echo=TRUE, cache=FALSE>>=
+work <- get.data(synth.data,
+                 K = K)
+@
+
+The first element, \texttt{work[["m"]]}, gives the sample counts by gender, sexual identity and age.
+<<echo=TRUE, cache=FALSE>>=
+work[["m"]]
+@
+\texttt{BYW} refers to bisexual younger women, \texttt{HOM} refers to gay older men, and so on.
+
+The second element, \texttt{work[["M"]]}, gives the population counts by gender and age.
+<<echo=TRUE, cache=FALSE>>=
+work[["M"]]
+@
+\texttt{YW} refers to younger women, \texttt{OM} refers to older men, and so on. For this example, the population totals are synthetic quantities, constructed to be similar to the subpopulation size estimates from the Gallup Daily Tracking interviews and 2010 Census for MSA 1.
+
+The third element, \texttt{work[["D"]]}, gives a list of degree distributions by gender and age group.
+<<echo=TRUE, cache=FALSE>>=
+work[["D"]]
+@
+
+\texttt{work[["D"]][["YW"]]["0"]} gives the number of young women in the sample with degree $0$, i.e. $0$ alters.
+
+The fourth element, \texttt{work[["n"]]}, gives the sample mixing matrix by gender and sexual identity.
+<<echo=TRUE, cache=FALSE>>=
+work[["n"]]
+@
+\texttt{work[["n"]]["L", "G"]} gives the number of gay male alters reported by sampled lesbian egos.
+
+The fifth element, \texttt{work[["start"]]}, gives a vector of starting values for unknown degree distribution parameters, $\boldsymbol \rho$ and $\boldsymbol \pi$, mixing parameters, $\boldsymbol \alpha$, and population proportion parameters, $\boldsymbol \theta$.
+Starting values for unknown degree distribution parameters, $\boldsymbol \rho$ and $\boldsymbol \pi$, are set to the moment estimators for a negative binomial distribution before rescaling the reported alter counts to give total degree less than or equal to the degree cutoff, $K$.
+Starting values for unknown mixing parameters, $\boldsymbol \alpha$, are equal to 1.
+Starting values for unknown population proportion parameters $\boldsymbol \theta$, are set to the corresponding population proportions.
+
+The sixth element, \texttt{work[["part.ref"]]}, gives a matrix of estimated participation and referrel rates by gender, sexual identity and age.
+<<echo=TRUE, cache=FALSE>>=
+work[["part.ref"]][1:3, c("C", "S")]
+@
+\texttt{work[["part.ref"]]["BYW", "C"]} gives the propbability that a younger, bisexual woman would be willing to participate and \texttt{work[["part.ref"]]["GOM", "S"]} gives the probability that an older, gay man would be willing to refer others.
+
+Lastly, the seventh element, \texttt{work[["dep.rate"]]}, gives a vector of probabilites that give the probability an ego is depressed by gender, age group and degree. These probabilies are obtained by performing a logistic regression of depression, given by the \texttt{depressed} variable in the aggregated egocentric sample data, on main and interaction effects of gender, age group and log-transformed degree, given by the \texttt{gender4}, \texttt{ageimp.ind}, \texttt{les50.imp.round}, \texttt{gay50.imp.round} and \texttt{bi50.imp.round} variables in the aggergated egocentric sample data. Vector elements' names give the degree, age group and gender that the probability corresponds to, i.e. \texttt{work[["dep.rate"]]["0.YW"]} gives the estimated probability that a younger woman with 0 alters is depressed.
+
+\section{Estimating Unknown Parameters}
+
+Having transformed the sample data into various sample quantities that appear in the likelihood and set starting values for the unknown parameters, we use the \texttt{solnp} function in the \texttt{Rsolnp} package to maximize the likelihood for the sample degree distributions, mixing totals and subpopulation sizes subject to constraints that are nonlinear in the unknown parameters.
+
+The \texttt{solnp} function takes several functions we created as arguments.
+The function \texttt{loglik} function gives the log-likelihood of the sample degree distributions, mixing totals and subpopulation sizes given the unknown parameters.
+To incorporate the constraints, we rewrite the constraints so that they can be written as functions of the data and unknown parameters set equal to constants (in this case, either $0$ or $1$).
+The \texttt{constraints} function returns a vector of values corresponding to the nonconstant sides of the rewritten constraints, and the vector supplied to the \texttt{eqB} argument gives the vector of the constant sides of the rewritten constraints.
+When evaluated for unknown parameter values for which the constraints hold, the \texttt{constraints} function returns a vector equal to the vector supplied to the \texttt{eqB}.
+
+We can use the \texttt{solnp} function to estimate the unknown parameters.
+In addition to providing the user-defined functions for the log-likelihood and constraints, we also provide \texttt{eqB}, which gives the values that the constraint function, \texttt{constraints}, gives when the constraints are satisified, as well as lower bounds and upper bounds for all of the parameters by specifying values of \texttt{LB} and \texttt{UB} arguments.
+\texttt{LB} is set to a vector of $0$'s because all of the unknown parameters are positive.
+\texttt{UB} is set to $1$ for unknown probabilities, $\boldsymbol \pi$ and $\boldsymbol \theta$.
+For strictly positive unknown parameters that are not probabilities, $\boldsymbol \rho$ and $\boldsymbol \alpha$, \texttt{UB} is set to $1,000$ to avoid numerical issues.
+<<echo=TRUE, cache=FALSE>>=
+model.nb  <- solnp(pars = work[["start"]],
+                   fun = loglik,
+                   eqfun = constraints,
+                   eqB = c(rep(0, 4), rep(1, 4)),
+                   LB = rep(0,
+                            length(work[["start"]])),
+                   UB = c(rep(c(1000, 1), 4),
+                          rep(1000, 9),
+                          rep(1, 4*2)),
+                   M = work[["M"]],
+                   m = work[["m"]],
+                   n = work[["n"]],
+                   kYW = as.numeric(names(work[["D"]][["YW"]])),
+                   kYM = as.numeric(names(work[["D"]][["YM"]])),
+                   kOW = as.numeric(names(work[["D"]][["OW"]])),
+                   kOM = as.numeric(names(work[["D"]][["OM"]])),
+                   DYW = work[["D"]][["YW"]],
+                   DYM = work[["D"]][["YM"]],
+                   DOW = work[["D"]][["OW"]],
+                   DOM = work[["D"]][["OM"]],
+                   K = K,
+                   control = c(outer.iter = 2000, # Max. # of iterations
+                               trace=0)) # Don't print out estimates at each iteration
+@
+
+Having obtained estimates of the unknown parameters, we compute standard errors by numerically approximating the Hessian with the constraints embedded in the likelihood using the \texttt{get.ses} function that we created.
+
+<<echo=TRUE, cache=FALSE>>=
+se <- get.ses(pars = model.nb$pars)
+@
+
+We can now examine the estimates and standard errors for the unknown parameters.
+<<echo=TRUE, cache=FALSE>>=
+round(data.frame("estimates" = model.nb$pars,
+                 "standard errors" = c(se$pi.se, se$alph.se, se$pop.se)), 3)
+@
+
+\section{Simulating Synthetic Networks}
+
+First, we set the number of synthetic networks we would like to obtain.
+<<echo=TRUE, cache=FALSE>>=
+nsim <- 50
+@
+
+The first step in simulating synthetic networks is to transform parameter estimates to degree probabilites by age group and gender.
+<<echo=TRUE, cache=FALSE>>=
+piYW.deg <- c(dnbinom(0:(K - 1),
+                      size = model.nb$pars["piYW.r"],
+                      prob = 1 - model.nb$pars["piYW.p"]),
+              1 - sum(dnbinom(0:(K - 1),
+                              size = model.nb$pars["piYW.r"],
+                              prob = 1 - model.nb$pars["piYW.p"])))
+piYM.deg <- c(dnbinom(0:(K - 1),
+                      size = model.nb$pars["piYM.r"],
+                      prob = 1 - model.nb$pars["piYM.p"]),
+              1 - sum(dnbinom(0:(K - 1),
+                              size = model.nb$pars["piYM.r"],
+                              prob = 1 - model.nb$pars["piYM.p"])))
+piOW.deg <- c(dnbinom(0:(K - 1),
+                      size = model.nb$pars["piOW.r"],
+                      prob = 1 - model.nb$pars["piOW.p"]),
+              1 - sum(dnbinom(0:(K - 1),
+                              size = model.nb$pars["piOW.r"],
+                              prob = 1 - model.nb$pars["piOW.p"])))
+piOM.deg <- c(dnbinom(0:(K - 1),
+                      size = model.nb$pars["piOM.r"],
+                      prob = 1 - model.nb$pars["piOM.p"]),
+              1 - sum(dnbinom(0:(K - 1),
+                              size = model.nb$pars["piOM.r"],
+                              prob = 1 - model.nb$pars["piOM.p"])))
+@
+
+We then need to transform population proportion estimates into subpopulation size estimates by gender, sexual identity and age group.
+<<echo=TRUE, cache=FALSE>>=
+popBYW.est <- round(work[["M"]]["YW"]*model.nb$pars["piBYW"], 0)
+popHYW.est <- round(work[["M"]]["YW"]*model.nb$pars["piHYW"], 0)
+popBYM.est <- round(work[["M"]]["YM"]*model.nb$pars["piBYM"], 0)
+popHYM.est <- round(work[["M"]]["YM"]*model.nb$pars["piHYM"], 0)
+popBOW.est <- round(work[["M"]]["OW"]*model.nb$pars["piBOW"], 0)
+popHOW.est <- round(work[["M"]]["OW"]*model.nb$pars["piHOW"], 0)
+popBOM.est <- round(work[["M"]]["OM"]*model.nb$pars["piBOM"], 0)
+popHOM.est <- round(work[["M"]]["OM"]*model.nb$pars["piHOM"], 0)
+@
+
+Then, we can combine estimated degree probabilities and estimated subpopulation sizes to obtain estimated population degree distributions by gender, sexual identity and age group.
+<<echo=TRUE, cache=FALSE>>=
+DBYW.est <- piYW.deg*popBYW.est
+DBYM.est <- piYM.deg*popBYM.est
+DBOW.est <- piOW.deg*popBOW.est
+DBOM.est <- piOM.deg*popBOM.est
+DHYW.est <- piYW.deg*popHYW.est
+DHYM.est <- piYM.deg*popHYM.est
+DHOW.est <- piOW.deg*popHOW.est
+DHOM.est <- piOM.deg*popHOM.est
+@
+
+Initializing a network with the desired degree distribution requires constructing a degree sequence, i.e. a vector of degrees for each node in the network that is consistent with the desired degree distribution.
+We construct this vector by rounding the estimated degree distributions to the nearest integer and repeating each degree value the number of times indicated by the estimated degree distributions.
+We also construct a corresponding vector indicating nodal gender, sexual identity and age group to reflect the stratification of the degree distributions.
+<<echo=TRUE, cache=FALSE>>=
+degs <- rep(c(0:K, 0:K,
+              0:K, 0:K,
+              0:K, 0:K,
+              0:K, 0:K),
+            round(c(DBYW.est, DHYW.est,
+                    DBYM.est, DHYM.est,
+                    DBOW.est, DHOW.est,
+                    DBOM.est, DHOM.est), 0))
+degtype <- rep(c("BYW", "HYW",
+                 "BYM", "HYM",
+                 "BOW", "HOW",
+                 "BOM", "HOM"),
+               c(popBYW.est, popHYW.est,
+                 popBYM.est, popHYM.est,
+                 popBOW.est, popHOW.est,
+                 popBOM.est, popHOM.est))
+@
+
+Initializing a network with a desired degree sequence, and therefore distribution, requires the use of functions in the \texttt{network} and \texttt{statnet} packages as well as the \texttt{reedm} function we created that initializes a network with a desired degree sequence using the Reed-Molloy algorithm.
+
+Now, we can initialize the network and label the nodes accordingly.
+<<echo=TRUE, cache=FALSE>>=
+net <- reedm(degs)
+net %v% "degtype" <- degtype
+@
+
+We add additional, binary labels to the nodes for convenience.
+<<echo=TRUE, cache=FALSE>>=
+net %v% "type" <- ifelse(grepl("W", degtype) &
+                           !grepl("B", degtype), "L",
+                         ifelse(grepl("W", degtype) &
+                                  grepl("B", degtype), "BW",
+                                ifelse(grepl("M", degtype) &
+                                         !grepl("B", degtype), "G", "BM")))
+net %v% "bibin" <- as.numeric(grepl("B", degtype))
+net %v% "genbin" <- as.numeric(grepl("M", degtype))
+@
+
+Now, we need to construct the estimated mixing totals for a network of this size and degree distribution. We begin by calculating the total number of edges in the network by gender and sexual identity, as well as the total number of edges overall.
+<<echo=TRUE, cache=FALSE>>=
+degs <- summary(net ~ degree(0 : K, by = "type"))
+L.est <- sum(0:K*degs[grepl("L", names(degs))])
+G.est <- sum(0:K*degs[grepl("G", names(degs))])
+BW.est <- sum(0:K*degs[grepl("BW", names(degs))])
+BM.est <- sum(0:K*degs[grepl("BM", names(degs))])
+edges.est <- L.est + G.est + BW.est + BM.est
+@
+
+Now we construct a matrix of estimated mixing totals using the estimated edge totals and estimated mixing parameters.
+<<echo=TRUE, cache=FALSE>>=
+N.est <- matrix(0, ncol = 3, nrow = 4)
+colnames(N.est) <- c("L", "G", "B")
+row.names(N.est) <- c("L", "G", "BW", "BM")
+N.est["L", "L"] <- L.est*L.est*model.nb$pars["alphaLL"]/edges.est
+N.est["L", "G"] <- N.est["G", "L"] <- L.est*G.est*model.nb$pars["alphaLG"]/edges.est
+N.est["G", "G"] <- G.est*G.est*model.nb$pars["alphaGG"]/edges.est
+N.est["BW", "L"] <- BW.est*L.est*model.nb$pars["alphaBWL"]/edges.est
+N.est["BW", "G"] <- BW.est*G.est*model.nb$pars["alphaBWG"]/edges.est
+N.est["BW", "B"] <- BW.est*(BW.est + BM.est)*model.nb$pars["alphaBWB"]/edges.est
+N.est["BM", "L"] <- BM.est*L.est*model.nb$pars["alphaBML"]/edges.est
+N.est["BM", "G"] <- BM.est*G.est*model.nb$pars["alphaBMG"]/edges.est
+N.est["BM", "B"] <- BM.est*(BW.est + BM.est)*model.nb$pars["alphaBMB"]/edges.est
+N.est["L", "B"] <- N.est["BW", "L"] + N.est["BM", "L"]
+N.est["G", "B"] <- N.est["BW", "G"] + N.est["BM", "G"]
+@
+
+Having computed the desired estimated degree distributions and mixing totals, we we write the target estimated degree distributions, \texttt{init.deg}, and the target estimated mixing totals, \texttt{init.mix}, using the syntax used by the network simulation functions used in network simulation.
+<<echo=TRUE, cache=FALSE>>=
+init.deg <- round(c(DBOM.est,
+                    DBOW.est,
+                    DBYM.est,
+                    DBYW.est,
+                    DHOM.est,
+                    DHOW.est,
+                    DHYM.est,
+                    DHYW.est))
+names(init.deg) <- names(summary(net ~ degree(0 : K, by = "degtype")))
+init.mix <- round(c(N.est["BM", "G"],
+                    N.est["BW", "G"],
+                    N.est["BM", "L"],
+                    N.est["BW", "L"],
+                    N.est["L", "G"]))
+names(init.mix) <- names(summary(net ~ nodemix("type", base=c(-1*c(4, 5, 7, 8, 9)))))
+@
+
+Now, starting with the network we initialized with the desired estimated degree distribution, we use simulated annealing via the \texttt{san} function to switch edges at random until we achieve the desired estimated mixing totals, holding the degree of each node constant.
+The parameter \texttt{SAN.burnin} controls the number of edge switches performed, we use $1000000$ to ensure that we achieve the desired estimated mixing totals.
+<<echo=TRUE, cache=FALSE>>=
+simmix <- san(net ~ nodemix("type", base=c(-1*c(4, 5, 7, 8, 9))),
+              target.stats = init.mix,
+              constraints = ~degrees,
+              control = control.san(SAN.burnin=1000000),
+              verbose=FALSE)
+@
+
+To check that the simulated network has degree distributions and mixing totals sufficiently close to the estimated degree distributions and mixing totals, we construct a data frame of the target estimated degree distributions and mixing totals and the achieved realized degree distributions and mixing totals.
+<<echo=TRUE, cache=FALSE>>=
+diagnostics <- data.frame("Target" = c(init.deg, init.mix),
+                          "Achieved" = summary(simmix ~ degree(0 : K,
+                                                               by = "degtype") +
+                                                 nodemix("type",
+                                                         base=c(-1*c(4, 5, 7, 8, 9)))))
+@
+Because this matrix includes too many quantities to show here, we examine the target and achieved mixing totals here.
+<<echo=TRUE, cache=FALSE>>=
+diagnostics[grepl("mix", row.names(diagnostics)), ]
+@
+We can see that the target mixing totals have been achieved.
+
+Now, we simulate \Sexpr{nsim} synthetic networks using simulated annealing via the \texttt{san} function to switch edges at random, holding the degree of each node and the mixing totals constant.
+The parameter \texttt{SAN.interval} determines the number of edge switches performed between synthetic network samples.
+<<echo=TRUE, cache=FALSE>>=
+sim <- san(simmix ~ nodemix("type"),
+           target.stats = summary(simmix ~ nodemix("type")),
+           constraints = ~degrees,
+           control = control.san(SAN.burnin=0,
+                                 SAN.interval=1000),
+           nsim=nsim,
+           verbose=FALSE)
+@
+
+The synthetic networks are almost complete.
+However, depression status has not been assigned to nodes.
+Because we are interested in assessing RDS feasibility for estimating the proportion depressed, we need to assign depression status to nodes.
+Recall that we had estimated the probability of depression by nodal gender, age group and degree.
+First, we use these estimated probabilities to estimate the expected number of depressed nodes in a simulated network with the desired estimated degree distributions.
+<<echo=TRUE, cache=FALSE>>=
+simmix %v% "deptype" <- gsub("B", "",
+                             gsub("H", "",
+                                  network::get.vertex.attribute(simmix, "degtype")))
+depgroups <- summary(simmix ~ degree(0 : K, by = c("deptype")))
+names(depgroups) <- gsub("deptype", "", gsub("deg", "", names(depgroups)))
+depcount <- round(sum(work[["dep.rate"]][names(depgroups)]*depgroups), 0)
+@
+We estimate that the expected number of depressed nodes per synthetic network of $5000$ nodes is \Sexpr{depcount} nodes.
+
+Now, we assign depression to \Sexpr{depcount} nodes in each synthetic network, with estimated probabilites from the aggregated egocentric sample data.
+<<echo=TRUE, cache=FALSE>>=
+for (i in 1:nsim) {
+  net.tmp <- sim$networks[[i]]
+  deg <- sapply(net.tmp$iel, length) + sapply(net.tmp$oel, length)
+  ty <- gsub("B", "",
+             gsub("H", "",
+                  network::get.vertex.attribute(net.tmp, "degtype")))
+  depstat <- paste(deg, ty, sep = ".")
+  depsample <- sample(x = 1:network.size(net.tmp),
+                      size = depcount,
+                      prob = work[["dep.rate"]][depstat],
+                      replace = FALSE)
+  sim$networks[[i]] %v% "depbin" <- as.numeric(1:length(ty) %in% depsample)
+}
+@
+
+\section{Simulating RDS}
+
+Now that we have obtained synthetic networks, we can simulate RDS.
+We will use functions in the \texttt{RDS} and \texttt{Hmisc} packages to compute RDS estimators and RDS interval estimators, and we will several functions we created to obtain synthetic RDS samples.
+In the interest of simplicity, we demonstrate one RDS simulation for one randomly selected synthetic network for the estimation of the proportion depressed, instead of 10 RDS simulations per 50 synthetic networks for estimating the proportion male, proportion bisexual and proportion depressed.
+
+Before we simulate RDS, we sample one synthetic network, \texttt{inet}, the size of each synthetic RDS sample, \texttt{ntot}, the number of seeds used to start each RDS sample, \texttt{seed}, and the number of coupons given to each sampled ego, \texttt{coup}.
+<<echo=TRUE, cache=FALSE>>=
+inet <- sample(1:50, 1, replace = FALSE)
+tot <- 500
+seed <- 10
+coup <- 2
+@
+
+Now, we simulate RDS on the randomly selected network using the \texttt{feasRDS.rdssample}.
+The \texttt{feasRDS.rdssample} function has many arguments and a wide range of functionality:
+\begin{itemize}
+\item \texttt{net}  takes the network to simulate RDS on;
+\item \texttt{nnodes} takes the size of the network to simulate RDS on;
+\item \texttt{nsamp0} takes the number of seeds to use when simulating RDS;
+\item \texttt{nsamp} takes the desired RDS sample size;
+\item \texttt{coupons} takes the number of coupons used for RDS;
+\item \texttt{seed.distribution} takes a \texttt{nnodes}$\times 1$ vector of (possibly unnormalized) probabilities corresponding to the seed selection probabilities for each node, seeds chosen with probability proportional to degree if \texttt{NULL};
+\item \texttt{seed.composition.by} takes the name of a binary nodal attribute used to fix attributes of seeds, seeds chosen with probability proportional to degree if \texttt{NULL};
+\item \texttt{seed.composition} takes a $2\times 1$ vector of the number of seeds chosen with \texttt{seed.composition.by} variable equal to 0 and 1, respectively, seeds chosen with probability proportional to degree without regard to nodal attributes if \texttt{NULL};
+\item \texttt{trait.variable} takes the name of the nodal attribute to be estimated by \texttt{RDS};
+\item \texttt{recruitment.rates.by} takes the name of a nodal attribute used to stratify willingness to participate and refer others with $L$ levels, nodes participate and refer others with probability $1$ if \texttt{NULL};
+\item \texttt{recruitment.rates} takes an $L\times 2$ matrix of probabilities of participation, in the first column, and referral, in the second column, by $L$ levels of \texttt{recruitment.rates.by} variable, nodes participate and refer others with probability $1$ if \texttt{NULL}.
+\end{itemize}
+Note that we can change the strategy for selecting seeds by changing the values of \texttt{seed.distribution}, \texttt{seed.composition.by} and \texttt{seed.composition}. For example, setting \texttt{seed.distribution =} \\ \texttt{rep(1, network.size(net))} and leaving \texttt{seed.composition.by = seed.composition = NULL} yields a simulated RDS sample where seeds are selected with equal probability, instead of with probability proportional to degree. Alternatively, leaving \texttt{seed.distribution = NULL} and setting \texttt{seed.composition.by = genbin} and \texttt{seed.composition = c(0, nseed)} yields a simulated RDS sample where strictly male seeds are selected with probability proportional to degree. Lastly, setting \texttt{seed.distribution =}  \\ \texttt{rep(1, network.size(net))}, \texttt{seed.composition.by = genbin} and \texttt{seed.composition = c(0, nseed)} yields a simulated RDS sample where strictly male seeds are selected with equal probability.
+<<echo=TRUE, cache=FALSE>>=
+net<-sim$networks[[inet]]
+samp <-feasRDS.rdssample(net = net,
+                    nnodes = network.size(net),
+                    nsamp0=seed,
+                    nsamp=tot,
+                    coupons=coup,
+                    seed.composition.by = NULL,
+                    seed.composition = NULL,
+                    trait.variable = "depbin",
+                    recruitment.rates.by = "degtype",
+                    recruitment.rates = work[["part.ref"]])
+@
+
+Having collected the RDS sample, we can examine the length of the longest RDS chain and the number of subjects obtained.
+<<echo=TRUE, cache=FALSE>>=
+data.frame("Waves" = max(samp$wsample), "Subjects" = length(samp$wsample))
+@
+We see that the longest chain required \Sexpr{max(samp$wsample)} waves, and that the RDS sample reached the desired sample size of \Sexpr{tot}.
+
+Before computing RDS estimates, we coerce the object returned by \texttt{feasRDS.rdssample} to a data frame to make it easier to work with.
+<<echo=TRUE, cache=FALSE>>=
+samp.rds <-feasRDS.to.data.frame(samp,
+                                    population.size=network.size(net))
+@
+
+Before computing estimates from the RDS sample, we compute the sample mean estimator from a simple random sample without replacement as a baseline.
+Recall that the true depression rate is \Sexpr{round(depcount/5000, 2)}.
+<<echo=TRUE, cache=FALSE>>=
+samp.simp <- sample(1:network.size(net), tot, replace = FALSE)
+dep.simp <- network::get.vertex.attribute(net, "depbin")[samp.simp]
+meanest.dep.simp<-binconf(x=sum(dep.simp),
+                          n=length(dep.simp),
+                          alpha=0.05,
+                          method=c("asymptotic"))
+@
+This gives an estimate of \Sexpr{round(meanest.dep.simp[1],2)}, and exact 95\% binomial confidence interval gives a 95\% interval of $\left(\Sexpr{round(meanest.dep.simp[2], 2)}, \Sexpr{round(meanest.dep.simp[3], 2)}\right)$.
+
+Now, we compute the the sample mean of the simulated RDS data.
+<<echo=TRUE, cache=FALSE>>=
+meanest.dep<-binconf(x=sum(samp$depsample==1),
+                     n=length(samp$depsample), alpha=0.05,
+                     method=c("asymptotic"))
+@
+The sample mean gives an estimate of \Sexpr{round(meanest.dep[1],2)}, and exact 95\% binomial confidence interval gives a 95\% interval of $\left(\Sexpr{round(meanest.dep[2], 2)}, \Sexpr{round(meanest.dep[3], 2)}\right)$.
+
+Now, we consider the Salganik-Heckathorn (SH) estimator, the first of the three estimators designed for RDS samples we consider.
+<<echo=TRUE, cache=FALSE>>=
+sh.dep<-RDS.I.estimates(samp.rds,
+                        outcome.variable="depbin",
+                        N=network.size(net))
+@
+The SH estimator gives an estimate of \Sexpr{round(sh.dep$interval[2, 1],2)}, and Salganik bootstrap confidence interval gives a 95\% interval of $\left(\Sexpr{round(sh.dep$interval[2, 2], 2)}, \Sexpr{round(sh.dep$interval[2, 3], 2)}\right)$.
+
+Next, we consider the Volz-Heckathorn (VH) estimator.
+<<echo=TRUE, cache=FALSE>>=
+vh.dep<-RDS.II.estimates(samp.rds,
+                         outcome.variable="depbin",
+                         N=network.size(net))
+@
+The VH estimator gives an estimate of \Sexpr{round(vh.dep$interval[1, 1],2)}, and Salganik bootstrap confidence interval gives a 95\% interval of $\left(\Sexpr{round(vh.dep$interval[1, 2], 2)}, \Sexpr{round(vh.dep$interval[1, 3], 2)}\right)$.
+
+Lastly, we consider the successive sampling (SS) estimator.
+<<echo=TRUE, cache=FALSE>>=
+ss.dep<-RDS.SS.estimates(samp.rds,
+                         outcome.variable="depbin",
+                         N=network.size(net))
+@
+The SS estimator gives an estimate of \Sexpr{round(ss.dep$interval[1, 1],2)}, and corresponding bootstrap confidence interval gives a 95\% interval of $\left(\Sexpr{round(ss.dep$interval[1, 2], 2)}, \Sexpr{round(ss.dep$interval[1, 3], 2)}\right)$.
+
+\subsection{Fixing Seed Composition}
+
+Having demonstrated RDS simulation and the computation of RDS point and interval estimators, we briefly show how the seed composition can be fixed for RDS simulation.
+To simulate an RDS sample that begins with $10$ depressed nodes and $0$ non-depressed nodes, we modify the \texttt{seed.composition.by} and \texttt{seed.composition} arguments.
+<<echo=TRUE, cache=FALSE>>=
+dep.samp <-feasRDS.rdssample(net = net,
+                        nnodes = network.size(net),
+                        nsamp0=seed,
+                        nsamp=tot,
+                        coupons=coup,
+                        seed.composition.by = "depbin",
+                        seed.composition = c(0, 10),
+                        trait.variable = "depbin",
+                        recruitment.rates.by = "degtype",
+                        recruitment.rates = work[["part.ref"]])
+@
+
+As before, we can coerce the object returned by \texttt{feasRDS.rdssample} to a data frame and compute RDS estimators.
+<<echo=TRUE, cache=FALSE>>=
+dep.samp.rds <-feasRDS.to.data.frame(dep.samp,
+                                    population.size=network.size(net))
+@
+
+As an example, we compute the SS estimator.
+<<echo=TRUE, cache=FALSE>>=
+ss.dep.dep<-RDS.SS.estimates(dep.samp.rds,
+                             outcome.variable="depbin",
+                             N=network.size(net))
+@
+Using this RDS sample starting with $10$ depressed seeds, the SS estimator gives an estimate of \Sexpr{round(ss.dep.dep$interval[1, 1],2)}, and corresponding bootstrap confidence interval gives a 95\% interval of $\left(\Sexpr{round(ss.dep.dep$interval[1, 2], 2)}, \Sexpr{round(ss.dep.dep$interval[1, 3], 2)}\right)$.
+
+\section{Conclusion}
+
+In this material, we use aggregated, egocentric sample data on a hard to reach population to estimate population network parameters, simulate networks consistent with population network parameter estimates, simulate RDS on a simulated network with seeds chosen at random proportional to degree and simulate RDS on a simulated network with seeds of given types chosen at random proportional to degree within type using the methods developed in the paper ``Studying Lesbian, Gay and Bisexual Older Adults: Is Respondent Driven Sampling Feasible?"
+
+\end{document}
