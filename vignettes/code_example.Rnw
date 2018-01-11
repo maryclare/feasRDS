@@ -4,6 +4,7 @@
 \usepackage[margin=1in]{geometry}
 
 \begin{document}
+\SweaveOpts{concordance=TRUE}
 
 \section{Introduction}
 
