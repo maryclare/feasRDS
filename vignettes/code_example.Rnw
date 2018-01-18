@@ -8,7 +8,7 @@
 
 \section{Introduction}
 
-This material is a supplement to the paper, ``Studying Lesbian, Gay and Bisexual Older Adults: Is Respondent Driven Sampling Feasible?"
+This material is a supplement to the paper, ``A simulation-based framework for assessing the feasibility of respondent-driven sampling for estimating characteristics in populations of lesbian, gay and bisexual older adults."
 We provide an illustration of the methods developed in the paper for assessing RDS feasibility given aggregated, egocentric sample data on a hard to reach population.
 We emphasize that this material does not replicate results presented in the paper; we cannot make the raw data available and code that replicated the results would be prohibitively slow to run due to the number of networks and RDS samples simulated to generate the results in the paper.
 Rather, this material walks through each step of the methods presented in the paper for a single simulated RDS sample drawn from a single simulated population network for a synthetic data set, constructed to be similar to the raw data used in the paper.
