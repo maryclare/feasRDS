@@ -19,8 +19,6 @@ Before beginning, we clear the memory, set a random seed to ensure that the resu
 <<eval=TRUE, cache=FALSE, message=FALSE, warning=FALSE>>=
 rm(list = ls())
 set.seed(1)
-library(devtools)
-install_github("maryclare/feasRDS")
 library(feasRDS)
 @
 
@@ -456,7 +454,7 @@ sh.dep<-RDS.I.estimates(samp.rds,
                         outcome.variable="depbin",
                         N=network.size(net))
 @
-The SH estimator gives an estimate of \Sexpr{round(sh.dep$interval[2, 1],2)}, and Salganik bootstrap confidence interval gives a 95\% interval of $\left(\Sexpr{round(sh.dep$interval[2, 2], 2)}, \Sexpr{round(sh.dep$interval[2, 3], 2)}\right)$.
+The SH estimator gives an estimate of \Sexpr{round(sh.dep$interval[1, 1],2)}, and Salganik bootstrap confidence interval gives a 95\% interval of $\left(\Sexpr{round(sh.dep$interval[1, 2], 2)}, \Sexpr{round(sh.dep$interval[1, 3], 2)}\right)$.
 
 Next, we consider the Volz-Heckathorn (VH) estimator.
 <<echo=TRUE, cache=FALSE>>=
